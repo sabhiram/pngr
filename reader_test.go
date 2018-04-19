@@ -30,11 +30,18 @@ func TestReader(t *testing.T) {
 		data     []byte
 		filter   []string
 		isErr    bool
+		isBadCrc bool
 		segments int
 	}{
 		// Negative test cases.
 		{data: []byte{1, 2, 3}, filter: []string{`IHDR`}, isErr: true, segments: 0},
 		{data: []byte{1, 2, 3, 4, 5, 6, 7, 8}, filter: []string{`IHDR`}, isErr: true, segments: 0},
+
+		// Corrupt chunks.
+		{data: append(pngMagic, []byte{1, 2, 3}...), filter: []string{`IHDR`}, isErr: false, segments: 0},
+		{data: append(pngMagic, []byte{1, 2, 3, 4, 5}...), filter: []string{`IHDR`}, isErr: false, segments: 0},
+		{data: append(pngMagic, []byte{0, 0, 0, 0, 'I', 'E', 'N', 'D', 1}...), filter: []string{`IHDR`}, isErr: false, segments: 0},
+		{data: append(pngMagic, []byte{0, 0, 0, 0, 'I', 'E', 'N', 'D', 1, 2, 3, 4}...), filter: []string{`IHDR`}, isErr: false, isBadCrc: true, segments: 0},
 
 		// Positive test cases.
 		{data: bs, filter: []string{`IHDR`}, isErr: false, segments: 1},
@@ -64,8 +71,16 @@ func TestReader(t *testing.T) {
 			if err == io.EOF {
 				break
 			}
-			fatalIfError(t, err)
-			ct += 1
+			if tc.isBadCrc {
+				if err != ErrBadCRC {
+					t.Errorf("Expected bad crc, got other error!\n")
+				} else {
+					break
+				}
+			} else {
+				fatalIfError(t, err)
+				ct += 1
+			}
 		}
 
 		if ct != tc.segments {

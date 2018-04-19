@@ -14,6 +14,8 @@ import (
 
 var (
 	pngMagic = []byte{137, 80, 78, 71, 13, 10, 26, 10}
+
+	ErrBadCRC = errors.New("bad crc for chunk")
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -91,7 +93,7 @@ func (r *Reader) includesChunkType(ct string) bool {
 func (r *Reader) Next() (*Chunk, error) {
 	chunk := &Chunk{}
 
-	for r.buf.Len() >= 12 {
+	for r.buf.Len() > 0 {
 		// V
 		// ----------------------------------------------------------------
 		// |  Length    |  Chunk Type |       ... Data ...       |  CRC   |
@@ -109,7 +111,7 @@ func (r *Reader) Next() (*Chunk, error) {
 		// ----------------------------------------------------------------
 		//    4 bytes       4 bytes         `Length` bytes         4 bytes
 
-		minLen := 4 + int(chunk.Length) + 4
+		minLen := 4 + int(chunk.Length)
 		if r.buf.Len() < minLen {
 			break
 		}
@@ -125,7 +127,7 @@ func (r *Reader) Next() (*Chunk, error) {
 
 		expCrc := crc32.ChecksumIEEE(append(ctbs, chunk.Data...))
 		if expCrc != chunk.Crc {
-			return nil, errors.New("bad crc for chunk")
+			return nil, ErrBadCRC
 		}
 
 		if r.includesChunkType(chunk.ChunkType) {
