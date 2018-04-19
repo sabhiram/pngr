@@ -1,25 +1,24 @@
-package main
+package pngr
+
+////////////////////////////////////////////////////////////////////////////////
 
 import (
 	"bytes"
 	"encoding/binary"
 	"errors"
-	"fmt"
 	"hash/crc32"
 	"io"
-	"io/ioutil"
-	"os"
 )
+
+////////////////////////////////////////////////////////////////////////////////
 
 var (
 	pngMagic = []byte{137, 80, 78, 71, 13, 10, 26, 10}
 )
 
-type Reader struct {
-	buf  *bytes.Buffer
-	opts *ReaderOptions
-}
+////////////////////////////////////////////////////////////////////////////////
 
+// Chunk describes a PNG chunk.
 type Chunk struct {
 	// ----------------------------------------------------------------
 	// |  Length    |  Chunk Type |       ... Data ...       |  CRC   |
@@ -31,10 +30,21 @@ type Chunk struct {
 	Crc       uint32
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+// ReaderOptions encapsulates various PNG chunk reader options.
 type ReaderOptions struct {
 	IncludedChunkTypes []string
 }
 
+// Reader implements a PNG chunk reader.
+type Reader struct {
+	buf  *bytes.Buffer
+	opts *ReaderOptions
+}
+
+// NewReader returns a PNG chunk reader if the provided data is a valid PNG byte
+// stream.
 func NewReader(data []byte, opts *ReaderOptions) (*Reader, error) {
 	n := len(pngMagic)
 	buf := bytes.NewBuffer(data)
@@ -60,6 +70,9 @@ func NewReader(data []byte, opts *ReaderOptions) (*Reader, error) {
 	}, nil
 }
 
+// includesChunkType returns true if the reader was created with a chunk type
+// filter and if the specified type matches one of the filter entries.  If the
+// reader was created with no options, all chunk types are yielded by `Next()`.
 func (r *Reader) includesChunkType(ct string) bool {
 	if r.opts == nil {
 		return true
@@ -72,6 +85,9 @@ func (r *Reader) includesChunkType(ct string) bool {
 	return false
 }
 
+// Next yields the next PNG chunk in the reader's buffer.  It returns an error
+// of io.EOF on end of data.  It returns a bad-crc error if a given chunk is
+// not constructed correctly.
 func (r *Reader) Next() (*Chunk, error) {
 	chunk := &Chunk{}
 
@@ -118,42 +134,4 @@ func (r *Reader) Next() (*Chunk, error) {
 	}
 
 	return nil, io.EOF
-}
-
-func fatalOnError(err error) {
-	if err != nil {
-		fmt.Printf("Fatal error: %s\n", err.Error())
-		os.Exit(1)
-	}
-}
-
-func main() {
-	bs, err := ioutil.ReadFile("../png-embed/out.png")
-	fatalOnError(err)
-
-	r1, err := NewReader(bs, nil)
-	fatalOnError(err)
-
-	r2, err := NewReader(bs, &ReaderOptions{
-		IncludedChunkTypes: []string{"tEXt"},
-	})
-	fatalOnError(err)
-
-	for i, r := range []*Reader{r1, r2} {
-		fmt.Printf("Using reader #%d\n", i+1)
-		for {
-			chunk, err := r.Next()
-			if err == io.EOF {
-				break
-			} else {
-				fatalOnError(err)
-			}
-
-			fmt.Printf("Got chunk: Type: %s Len: %d ", chunk.ChunkType, len(chunk.Data))
-			if chunk.ChunkType == "tEXt" {
-				fmt.Printf("Value: %s", chunk.Data)
-			}
-			fmt.Printf("\n")
-		}
-	}
 }
